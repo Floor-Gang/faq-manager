@@ -1,4 +1,4 @@
-package faq
+package main
 
 import (
 	"github.com/go-yaml/yaml"

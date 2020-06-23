@@ -1,4 +1,4 @@
-package faq
+package main
 
 import (
 	"database/sql"
