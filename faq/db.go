@@ -14,6 +14,7 @@ type FaQ struct {
 	Guild, Question, Answer string
 }
 
+// This will get a new database controller
 func getController(location string) Controller {
 	if _, err := os.Stat(location); err != nil {
 		_, err := os.Create(location)
@@ -35,6 +36,7 @@ func getController(location string) Controller {
 	}
 }
 
+// This initializes the database table if it doesn't exist
 func (c Controller) init() error {
 	_, err := c.db.Exec(
 		"CREATE TABLE IF NOT EXISTS faq (guild_id TEXT NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL)",
@@ -58,6 +60,7 @@ func (c Controller) Add(guild string, question string, answer string) error {
 	return err
 }
 
+// Set a question's answer
 func (c Controller) Set(guild string, question string, answer string) error {
 	_, err := c.db.Exec(
 		"UPDATE faq SET answer=? WHERE question=? AND guild_id=?", answer, question, guild,
@@ -66,6 +69,7 @@ func (c Controller) Set(guild string, question string, answer string) error {
 	return err
 }
 
+// Remove a question
 func (c Controller) Remove(guild string, question string) error {
 	_, err := c.db.Exec(
 		"DELETE FROM faq WHERE guild_id=? AND question=?", guild, question,
@@ -74,6 +78,7 @@ func (c Controller) Remove(guild string, question string) error {
 	return err
 }
 
+// Get all the FaQ's from a guild
 func (c Controller) GetAll(guild string) ([]FaQ, error) {
 	var result []FaQ
 
