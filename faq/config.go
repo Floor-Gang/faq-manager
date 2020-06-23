@@ -8,12 +8,17 @@ import (
 type Config struct {
 	Prefix     string
 	Token      string
-	Auth       string
-	FaQChannel string
-	DBLocation string
+	Auth       string // Authentication RPC server address
+	FaQChannel string // FaQ channel ID
+	DBLocation string // Database absolute location
 }
 
+// This will get the current configuration file. If it doesn't exist then a
+// new one will be made.
 func getConfig(location string) Config {
+	// This will attempt to read from the config file. If it doesn't exist then
+	// a new configuration file will be generated otherwise we continue to parse
+	// the current config and return it
 	if data, err := ioutil.ReadFile(location); err != nil {
 		return genConfig(location)
 	} else {
@@ -41,6 +46,7 @@ func getConfig(location string) Config {
 	}
 }
 
+// This will create a new configuration file
 func genConfig(location string) Config {
 	newConfig := map[string]string{
 		"prefix":      ".faq",
