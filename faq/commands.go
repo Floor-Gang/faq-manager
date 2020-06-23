@@ -289,32 +289,3 @@ func (b *Bot) sync(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 	}
 }
-
-func (b *Bot) removeFromChannel(s *discordgo.Session, m *discordgo.MessageCreate, question string) {
-	messages, err := s.ChannelMessages(b.config.FaQChannel, 100, "", "", "")
-
-	if err != nil {
-		reply(s, m, "Failed to get messages from FaQ channel to remove this question.")
-		log.Println("Failed getting messages from faq channel", err)
-		return
-	}
-
-	for _, message := range messages {
-		if len(message.Embeds) > 0 {
-			embed := message.Embeds[0]
-			title := strings.ToLower(embed.Title)
-
-			if title == strings.ToLower(question) {
-				err := s.ChannelMessageDelete(b.config.FaQChannel, message.ID)
-
-				if err != nil {
-					reply(s, m, "Failed to delete the that question from the FaQ channel.")
-					log.Println("Failed to delete question from FaQ channel.", err)
-				}
-				break
-			}
-		} else {
-			log.Println("no")
-		}
-	}
-}
