@@ -1,15 +1,12 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
+	"github.com/Floor-Gang/faq-manager/internal"
+	util "github.com/Floor-Gang/utilpkg"
 )
 
 func main() {
-	Start("./config.yml")
+	internal.Start("./config.yml")
 
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
-	<-sc
+	util.KeepAlive()
 }

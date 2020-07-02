@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"database/sql"
@@ -15,7 +15,7 @@ type FaQ struct {
 }
 
 // This will get a new database controller
-func getController(location string) Controller {
+func GetController(location string) Controller {
 	if _, err := os.Stat(location); err != nil {
 		_, err := os.Create(location)
 
