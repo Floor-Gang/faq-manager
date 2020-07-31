@@ -2,58 +2,103 @@ package internal
 
 import (
 	"fmt"
-	util "github.com/Floor-Gang/utilpkg"
-	"github.com/bwmarrin/discordgo"
+	util "github.com/Floor-Gang/utilpkg/botutil"
+	dg "github.com/bwmarrin/discordgo"
 	"log"
 	"strings"
 )
 
-// This listens for all new messages that the bot can see
-func (b *Bot) onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore messages that aren't in a guild and don't start with the prefix
-	if len(m.GuildID) == 0 || !strings.HasPrefix(m.Content, b.config.Prefix) {
-		return
-	}
-	// args = [<prefix>, command]
-	args := strings.Split(m.Content, " ")
-
-	// Make sure they provided a command (ie .faq add)
-	if len(args) < 2 {
+// This is the add command
+// args = [prefix, add, question ... \n .. answer]
+func (b *Bot) Add(m *dg.MessageCreate, args []string) {
+	// first let's make sure they provided enough info
+	if len(args) < 3 {
+		_, _ = util.Reply(b.client, m.Message,
+			fmt.Sprintf("Command usage: `%s add <question> new-line <answer>`", b.config.Prefix),
+		)
 		return
 	}
 
-	response, _ := b.auth.Auth(m.Author.ID)
-	isAdmin := response.IsAdmin
+	split := strings.SplitN(
+		strings.Join(args[2:], " "),
+		"\n",
+		2,
+	)
 
-	if isAdmin {
-		switch args[1] {
-		case "add":
-			b.Add(m, args)
-			break
-		case "get":
-			b.Get(s, m, args)
-			break
-		case "list":
-			b.List(s, m)
-			break
-		case "remove":
-			b.Remove(s, m, args)
-			break
-		case "set":
-			b.Set(s, m, args)
-			break
-		case "sync":
-			b.Sync(s, m)
-			break
+	// Make sure they split their question and answer with one new-line
+	if len(split) < 2 {
+		_, _ = util.Reply(b.client, m.Message,
+			fmt.Sprintf("Command usage: `%s add <question> new-line <answer>`", b.config.Prefix),
+		)
+		return
+	}
+
+	question := strings.TrimSpace(split[0])
+	answer := split[1]
+	guild := m.GuildID
+
+	// Add the question + answer to the database
+	err := b.db.Add(guild, question, answer)
+
+	if err != nil {
+		_, _ = util.Reply(b.client, m.Message,
+			"Something went wrong while adding this FaQ to the database.")
+		return
+	}
+	// Build the FaQ embed
+	embed := buildEmbed(question, answer)
+	// Send the embed to the FaQ channel
+	_, err = b.client.ChannelMessageSendEmbed(b.config.FaQChannel, &embed)
+
+	if err != nil {
+		_, _ = util.Reply(b.client, m.Message, "Failed to send question to the FaQ channel, is one set?")
+		log.Println("Failed to send question to the FaQ channel", question, answer, err)
+	}
+}
+
+// This is the remove command
+// args = [prefix, remove, question context]
+func (b *Bot) Remove(s *dg.Session, m *dg.MessageCreate, args []string) {
+	if len(args) < 3 {
+		_, _ = util.Reply(s, m.Message,
+			fmt.Sprintf("Command usage: `%s remove <question context>`", b.config.Prefix),
+		)
+		return
+	}
+
+	// Get the question they're talking about
+	context := strings.ToLower(strings.Join(args[2:], " "))
+	faqs, err := b.db.GetAll(m.GuildID)
+
+	if err != nil {
+		_, _ = util.Reply(s, m.Message,
+			"Something went wrong while getting the FaQ for this server.")
+		log.Printf("Something went wrong while getting FaQ for %s\n%s\n", m.GuildID, err)
+	}
+
+	// Iterate through all the FaQ's for this Discord server
+	for _, faq := range faqs {
+		if strings.Contains(strings.ToLower(faq.Question), context) {
+			// Remove it from the database
+			err = b.db.Remove(m.GuildID, faq.Question)
+
+			if err != nil {
+				_, _ = util.Reply(s, m.Message, "Something went wrong while removing the question")
+				log.Printf(`Something went wrong while removing the following "%s" for "%s"`, faq.Question, m.GuildID)
+			} else {
+				_, _ = util.Reply(s, m.Message, "Removed "+faq.Question)
+				// Remove it from the FaQ channel (only up to 100 messages)
+				b.RemoveFromChannel(s, m, faq.Question)
+			}
+			return
 		}
-	} else {
-		_, _ = util.Reply(s, m.Message, "You must be admin to run this command.")
 	}
+	_, _ = util.Reply(s, m.Message, "Couldn't find \""+context+"\"")
 }
 
 // This is the get command
 // args = [prefix, get, question context ... ]
-func (b *Bot) Get(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {
+func (b *Bot) Get(s *dg.Session, m *dg.MessageCreate, args []string) {
 	if len(args) < 3 {
 		_, _ = util.Reply(s, m.Message,
 			fmt.Sprintf("Command usage: `%s get <question context>`", b.config.Prefix),
@@ -90,8 +135,90 @@ func (b *Bot) Get(s *discordgo.Session, m *discordgo.MessageCreate, args []strin
 	_, _ = util.Reply(s, m.Message, fmt.Sprintf(`I couldn't find anything with "%s"`, context))
 }
 
+// This is the set command
+// args = [prefix, set, question ... new answer]
+func (b *Bot) Set(s *dg.Session, m *dg.MessageCreate, args []string) {
+	if len(args) < 3 {
+		_, _ = util.Reply(s, m.Message,
+			fmt.Sprintf("Command usage: `%s set <question> new-line <answer>`", b.config.Prefix),
+		)
+		return
+	}
+
+	split := strings.SplitN(
+		strings.Join(args[2:], " "),
+		"\n",
+		2,
+	)
+
+	if len(split) < 2 {
+		_, _ = util.Reply(s, m.Message,
+			fmt.Sprintf("Command usage: `%s set <question> new-line <answer>`", b.config.Prefix),
+		)
+		return
+	}
+
+	context := strings.ToLower(split[0])
+	newAnswer := split[1]
+	faqs, err := b.db.GetAll(m.GuildID)
+
+	if err != nil {
+		_, _ = util.Reply(s, m.Message,
+			"Something went wrong while getting the FaQ for this server.")
+		log.Printf("Something went wrong while getting FaQ for %s\n%s\n", m.GuildID, err)
+	}
+
+	for _, faq := range faqs {
+		question := strings.ToLower(faq.Question)
+
+		if strings.Contains(question, context) {
+			err := b.db.Set(m.GuildID, faq.Question, newAnswer)
+
+			if err != nil {
+				_, _ = util.Reply(s, m.Message,
+					"Something went wrong while updating this question in the database")
+				log.Println(err)
+				return
+			}
+			b.RemoveFromChannel(s, m, faq.Question)
+			embed := buildEmbed(faq.Question, newAnswer)
+			_, err = s.ChannelMessageSendEmbed(b.config.FaQChannel, &embed)
+			if err != nil {
+				_, _ = util.Reply(s, m.Message,
+					"Something went while sending the new FaQ to the FaQ channel.")
+				log.Printf("Failed to send embed to %s\n%s\n", m.GuildID, err)
+			}
+
+			_, _ = util.Reply(s, m.Message, "Updated.")
+			return
+		}
+	}
+	_, _ = util.Reply(s, m.Message, fmt.Sprintf(`Couldn't find "%s"'`, context))
+}
+
+// This is the list command
+func (b *Bot) List(s *dg.Session, m *dg.MessageCreate) {
+	// Get all the FaQ's for this Discord server from the database
+	faqs, err := b.db.GetAll(m.GuildID)
+
+	if err != nil {
+		_, _ = util.Reply(s, m.Message,
+			"Something went wrong while getting the FaQ for this server.")
+		log.Printf("Something went wrong while getting FaQ for %s\n%s\n", m.GuildID, err)
+	}
+
+	// Iterate through all the FaQ, put them in embeds, and send it to the channel
+	for _, faq := range faqs {
+		embed := buildEmbed(faq.Question, faq.Answer)
+		_, err = s.ChannelMessageSendEmbed(m.ChannelID, &embed)
+		if err != nil {
+			log.Printf("Failed to send embed to %s\n%s\n", m.GuildID, err)
+		}
+	}
+}
+
 // This is the sync command
-func (b *Bot) Sync(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (b *Bot) Sync(s *dg.Session, m *dg.MessageCreate) {
 	messages, err := s.ChannelMessages(b.config.FaQChannel, 100, "", "", "")
 
 	if err != nil {

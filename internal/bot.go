@@ -22,7 +22,7 @@ func Start(configPath string) {
 		log.Fatalln("Failed to connect to authentication server")
 	}
 
-	register, err := authClient.Register(
+	_, err = authClient.Register(
 		auth.Feature{
 			Name:          "FaQ Manager",
 			Description:   "For managing the FaQ channel",
@@ -66,7 +66,7 @@ func Start(configPath string) {
 		panic(err)
 	}
 
-	client, _ := discordgo.New(register.Token)
+	client, _ := discordgo.New(config.Token)
 
 	bot := Bot{
 		config: config,
