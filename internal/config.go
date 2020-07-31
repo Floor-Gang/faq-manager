@@ -1,7 +1,7 @@
 package internal
 
 import (
-	util "github.com/Floor-Gang/utilpkg"
+	util "github.com/Floor-Gang/utilpkg/config"
 	"log"
 	"strings"
 )
