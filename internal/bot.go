@@ -66,7 +66,7 @@ func Start(configPath string) {
 		panic(err)
 	}
 
-	client, _ := discordgo.New(config.Token)
+	client, _ := discordgo.New("Bot " + config.Token)
 
 	bot := Bot{
 		config: config,
